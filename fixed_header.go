@@ -1,6 +1,9 @@
 package mqtt
 
-import "io"
+import (
+	"fmt"
+	"io"
+)
 
 // The FixedHeader is present in all MQTT Control Packets.
 type FixedHeader struct {
@@ -23,7 +26,7 @@ type FixedHeader struct {
 }
 
 // Write the fixed header to the given writer using the MQTT wire protocol
-func (fh *FixedHeader) Write(w io.Writer) (n int, err error) {
+func (fh *FixedHeader) WriteTo(w io.Writer) (n int, err error) {
 
 	n, err = w.Write([]byte{(fh.PacketType << 4) | fh.Flags})
 	if err != nil {
@@ -33,6 +36,17 @@ func (fh *FixedHeader) Write(w io.Writer) (n int, err error) {
 	second, err = w.Write(fh.encodeLength())
 	n += second
 	return
+}
+
+func (fh *FixedHeader) ReadFrom(r io.Reader) error {
+	raw := make([]byte, 1)
+	if _, err := r.Read(raw); err != nil {
+		return err
+	}
+	fh.Flags = raw[0] & 0x0f
+	fh.PacketType = raw[0] >> 4
+	return fh.readLength(r)
+
 }
 
 func (fh *FixedHeader) encodeLength() []byte {
@@ -49,4 +63,22 @@ func (fh *FixedHeader) encodeLength() []byte {
 		dest = append(dest, encodedByte)
 	}
 	return dest
+}
+
+func (fh *FixedHeader) readLength(r io.Reader) error {
+	raw := make([]byte, 1)
+	multiplier := uint32(1)
+	fh.RemainingLength = 0
+	for more := true; more; {
+		if _, err := r.Read(raw); err != nil {
+			return err
+		}
+		fh.RemainingLength += uint32(raw[0]&0x7f) * multiplier
+		multiplier *= 128
+		if multiplier > 128*128*128 {
+			return fmt.Errorf("malformed remaining length in fixed header")
+		}
+		more = (raw[0] & 0x80) != 0
+	}
+	return nil
 }

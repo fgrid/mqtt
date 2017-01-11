@@ -15,7 +15,7 @@ func TestFixedHeaderWrite(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	length, err := fh.Write(&buf)
+	length, err := fh.WriteTo(&buf)
 	if err != nil {
 		t.Errorf("could not write fixed header: %s", err.Error())
 		return
